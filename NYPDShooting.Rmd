@@ -1,0 +1,181 @@
+---
+title: "NYPDShootingReport"
+output: html_document
+date: "2023-03-07"
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Step 0: Import Library
+
+```{r library, message=FALSE, warning=FALSE}
+# install.packages("tidyverse")
+library(tidyverse)
+library(lubridate)
+```
+
+## Step 1: Load Data
+
+* `read_csv()` reads comma delimited files
+
+```{r load}
+df = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(df)
+```
+
+## Step 2: Tidy and Transform Data
+This step here is to eliminate the columns where are not useful to the objective of this project. We do not need the location description, x coordinate, y coordinate, longitude, latitude, precinct, and jurisdiction code. Each columns are listed as such:
+**PRECINCT**,**JURISDICTION_CODE**,**LOCATION_DESC**, **X_COORD_CD**, **Y_COORD_CD**, and **Lon_Lat**. 
+
+```{r}
+df_2 = df %>% select(INCIDENT_KEY, 
+                   OCCUR_DATE,
+                   OCCUR_TIME,
+                   BORO, 
+                   STATISTICAL_MURDER_FLAG,
+                   PERP_AGE_GROUP,
+                   PERP_SEX,
+                   PERP_RACE,
+                   VIC_AGE_GROUP,
+                   VIC_SEX,
+                   VIC_RACE,
+                   Latitude,
+                   Longitude)
+# Return the column name along with the missing values
+lapply(df_2, function(x) sum(is.na(x)))
+```
+
+Data is missing within some of the columns within the the CSV file imported. There is a lot of data which isn't listed, such as perpetrator ages, sex, and race. This could be due to unavailable data regarded specific cases of shootings. This is handled by passing through all these unavailable groups into an "Unknown" group. This is done because we need to make sure this data is properly handled, as it could contain important information to the whole scope of our analysis. 
+
+Data Types:
+
+* **INCIDENT_KEY** should be treated as a string.
+* **BORO** should be treated as a factor.
+* **PERP_AGE_GROUP** should be treated as a factor.
+* **PERP_SEX** should be treated as a factor.
+* **PERP_RACE** should be treated as a factor.
+* **VIC_AGE_GROUP** should be treated as a factor.
+* **VIC_SEX** should be treated as a factor.
+* **VIC_RACE** should be treated as a factor.
+
+Race, Sex, Age Group, and Boro are all treated as factors. Incident Key should be treated as a string.  
+
+```{r}
+# Tidy and transform data
+df_2 = df_2 %>% 
+  replace_na(list(PERP_AGE_GROUP = "Unknown", PERP_SEX = "Unknown", PERP_RACE = "Unknown"))
+# Remove extreme values in data
+df_2 = subset(df_2, PERP_AGE_GROUP!="1020" & PERP_AGE_GROUP!="224" & PERP_AGE_GROUP!="940")
+df_2$PERP_AGE_GROUP = recode(df_2$PERP_AGE_GROUP, UNKNOWN = "Unknown")
+df_2$PERP_SEX = recode(df_2$PERP_SEX, U = "Unknown")
+df_2$PERP_RACE = recode(df_2$PERP_RACE, UNKNOWN = "Unknown")
+df_2$VIC_SEX   = recode(df_2$VIC_SEX, U = "Unknown")
+df_2$VIC_RACE   = recode(df_2$VIC_RACE, UNKNOWN = "Unknown")
+df_2$INCIDENT_KEY = as.character(df_2$INCIDENT_KEY)
+df_2$BORO = as.factor(df_2$BORO)
+df_2$PERP_AGE_GROUP = as.factor(df_2$PERP_AGE_GROUP)
+df_2$PERP_SEX = as.factor(df_2$PERP_SEX)
+df_2$PERP_RACE = as.factor(df_2$PERP_RACE)
+df_2$VIC_AGE_GROUP = as.factor(df_2$VIC_AGE_GROUP)
+df_2$VIC_SEX = as.factor(df_2$VIC_SEX)
+df_2$VIC_RACE = as.factor(df_2$VIC_RACE)
+# Return summary statistics
+summary(df_2)
+```
+
+## Step 3: Add Visualizations and Analysis
+
+**Research Question**
+
+1. Which Area of New York has the most number of incidents? How many of these incidents were considered Murder Cases?
+
+
+Brooklyn had the highest amount of incidents. Bronx had the second highest amount of incidents. Queens had the third highest amount of incidents. The murder cases, also followed the same structure going: Brooklyn, Bronx, and Queens.
+```{r}
+g <- ggplot(df_2, aes(x = BORO)) +
+  geom_bar() +
+  labs(title = "Boroughs of NYC",
+       x = "Boroughs of NYC",
+       y = "Count of Incidents") +
+  theme_minimal()
+g
+```
+
+```{r}
+table(df_2$BORO, df_2$STATISTICAL_MURDER_FLAG)
+```
+2. Which days and time in NYC are people the most targeted for crime?
+
+Weekends in NYC have the most chances of incidents, this is because incidents historically happen in the evening or around night. It is advised to stay at home during late hours of the weekend in order to minimize chances of becoming a victim of crime. The other highest points according to the data, would be considered Monday and Friday, both days which directly before or after a weekend respectively. The safest hours for a lesser amount of incidents would anywhere from 5AM-10AM. The hours for a higher chance of incidents would occur anywhere from 10PM-4AM. 
+
+```{r}
+df_2$OCCUR_DAY = mdy(df_2$OCCUR_DATE)
+df_2$OCCUR_DAY = wday(df_2$OCCUR_DAY, label = TRUE)
+df_2$OCCUR_HOUR = hour(hms(as.character(df_2$OCCUR_TIME)))
+df_3 = df_2 %>%
+  group_by(OCCUR_DAY) %>%
+  count()
+df_4 = df_2 %>%
+  group_by(OCCUR_HOUR) %>%
+  count()
+```
+
+```{r}
+g <- ggplot(df_3, aes(x = OCCUR_DAY, y = n)) +
+  geom_col() +
+  labs(title = "Which day should people in NYC be cautious of incidents?",
+       x = "Incident Day",
+       y = "Number of Incidents") +
+  theme_minimal()
+g
+```
+```{r}
+g <- ggplot(df_4, aes(x = OCCUR_HOUR, y = n)) +
+  geom_line() +
+  labs(title = "Which time should people in New York be cautious of incidents?",
+       x = "Incident Hour",
+       y = "Number of Incidents") +
+  theme_minimal()
+g
+```
+
+Looking at this data, we should go deeper and investigate the ages and genders of perps. Creating a profile for the perpetrators and victims could be useful for a more deeper and thorough analysis. 
+
+3. The Profile of Perpetrators and Victims
+
+A large number of incidents in the age group of 25-44 and 18-24 exists within the data. Black and White Hispanic neighborhoods were higher in the number of incidents in  Boroughs of NYC when compared to White and Asian/Pacific Islander. There are significantly more incidents with Male than those of Female as well.
+
+```{r}
+table(df_2$PERP_AGE_GROUP, df_2$VIC_AGE_GROUP)
+```
+```{r}
+table(df_2$PERP_SEX, df_2$VIC_SEX)
+```
+```{r}
+table(df_2$PERP_RACE, df_2$VIC_RACE)
+```
+
+4.Logistic regression model to predict if the incident is a murder? (Analysis)
+
+Logistic regression models to estimate the probability that a murder case belongs to a particular profile, location, or date & time will be used within this analysis. The output shows the coefficients, their standard errors, the z-statistic, and the associated p-values. 
+
+**PERP_SEXUnknown**, **PERP_AGE_GROUP45-64**, **PERP_AGE_GROUP65+**, **PERP_AGE_GROUPUnknown**, and **PERP_AGE_GROUP25-44** are statistically significant, as are the **latitude** and **longitude**. 
+
+The logistic regression coefficients give the change in the log odds of the outcome for a one unit increase in the predictor variable. The person in the age group of 65+, versus a person whose age < 18, changes the log odds of murder by 1.03, which is expected due to age differences.
+
+```{r}
+# Logistics Regression 
+glm.fit <- glm(STATISTICAL_MURDER_FLAG ~ PERP_RACE + PERP_SEX + PERP_AGE_GROUP + OCCUR_HOUR + OCCUR_DAY + Latitude + Longitude, data = df_2, family = binomial)
+summary(glm.fit)
+```
+## Step 4: Identify Bias
+
+When it comes to topics such as Shootings and Crime data, there will always be discrimination and implicit bias among individuals. I have explored New York throughout my life, and I would have personally believed that Queens must have had the highest number of incidents. I would have also made the assumption that incidents would be more likely among women than men. It is interesting to see Brooklyn is the highest in terms of incidents and the murder cases follows the same pattern. There are significantly more incidents with males, instead of my original thoughts. It is a good idea to test and validate these assumptions using data over personal relative experience. Without data driven testing, there would be a larger bias, as the data does not agree with personal experience, it shows a different story. When we validate these assumptions, it is clear that experience does not show the entire story, and provides bias towards certain groups and populations."There were 433 homicides last year, about an 11 percent drop since 2021 and the fewest since 2019. Killings touched a 22-year low in 2017, when only 292 people were slain.Last year, about 300 fewer people were shot than the year before. Shootings in 2022 also fell to 1,294, a 17 percent decrease" (New York Times). Though the data suggests that there is a surge of more shootings from the 2020 to 2021 year, it seems to have fallen over these last two years, but crime has increased in conjunction. 
+
+## Additional Resources
+
+* [NYPD Shooting Incident Data (Historic) - CKAN](https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic)
+* [City sees drop in shootings and murders, but overall crime rises: NYPD data](https://www.ny1.com/nyc/all-boroughs/news/2022/11/03/october-2022-nypd-crime-data)
+* [Major Crimes Rose 22 Percent in New York City, Even as Shootings Fell - NY Times](https://www.nytimes.com/2023/01/05/nyregion/new-york-crime-stats.html)
+Footer
